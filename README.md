@@ -236,7 +236,7 @@ Per-service allowances are in [`docs/06-cost-tracker.md`](docs/06-cost-tracker.m
 
 ![DynamoDB smartops-incidents table with the recorded incidents](docs/img/dynamodb-incidents.png)
 
-**CloudWatch metrics for the RCA Lambda (`SmartOps` namespace)**
+**CloudWatch metrics for the RCA Lambda**
 
 ![CloudWatch SmartOps metrics](docs/img/cloudwatch-metrics.png)
 
@@ -244,11 +244,11 @@ Per-service allowances are in [`docs/06-cost-tracker.md`](docs/06-cost-tracker.m
 
 ![Lambda function overview SmartOps](docs/img/lambda-function-overview.png)
 
-**EventBridge rule that triggers the RCA Lambda  (`SmartOps` namespace)**
+**EventBridge rule that triggers the RCA Lambda**
 
 ![Lambda function event-bridge](docs/img/event-bridge.png)
 
-**ECR Repositories (`SmartOps` namespace)**
+**ECR Repositories**
 
 ![ECR Repositories](docs/img/ecr-repositories.png)
 
@@ -256,7 +256,7 @@ Per-service allowances are in [`docs/06-cost-tracker.md`](docs/06-cost-tracker.m
 
 ![EC2 Instances](docs/img/ec2-instances.png)
 
-**The three Lambda function (`SmartOps` namespace)**
+**The three Lambda function**
 
 ![Lambda functions](docs/img/lambda-functions.png)
 

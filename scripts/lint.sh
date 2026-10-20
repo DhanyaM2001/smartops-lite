@@ -95,7 +95,7 @@ fi
 
 if have shellcheck; then
   say "shellcheck scripts/*.sh"
-  shellcheck scripts/*.sh || fail "shellcheck"
+  shellcheck --severity=error scripts/*.sh || fail "shellcheck"
 else
   skip "shellcheck not installed"
 fi

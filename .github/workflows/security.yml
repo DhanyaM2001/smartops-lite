@@ -47,7 +47,7 @@ jobs:
         # Security tab). Flip to `continue-on-error: false` once Module 8.1
         # lands the release pipeline so CVEs gate the merge.
         continue-on-error: true
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@0.36.0.
         with:
           scan-type: fs
           scan-ref: .
@@ -78,7 +78,7 @@ jobs:
       - name: Run Trivy config scan
         # Same non-blocking policy as trivy-fs; see comment above.
         continue-on-error: true
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@0.36.0.
         with:
           scan-type: config
           scan-ref: .
