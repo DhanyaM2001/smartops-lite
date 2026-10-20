@@ -332,7 +332,7 @@ unset SLACK_WEBHOOK_URL GROQ_API_KEY
 
 **Runs.** `ruff`, `mypy`, `hadolint`, `terraform fmt -check`, `tflint`, `yamllint`, `shellcheck`.
 
-**Exit codes.** 0 if nothing failed (including "no linters installed" or "no target directories yet"). Non-zero only on actual lint failures.
+**Exit codes.** 0 if nothing failed (including "no linters installed" or "no target directories yet"). Non-zero only on actual lint failures. ruff and mypy findings are printed but don't fail the run, and shellcheck fails only on error-level findings.
 
 ### 3.6 `validate.sh` — offline static validation
 

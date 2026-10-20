@@ -17,3 +17,4 @@ trustedRegistries:
   - docker.io
   - ghcr.io
   - public.ecr.aws
+  - mcr.microsoft.com
