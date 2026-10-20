@@ -17,7 +17,7 @@ uvicorn = { extras = ["standard"], version = "^0.32.0" }
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
-pytest-asyncio = "^0.24.0"
+pytest-asyncio = ">=0.24,<1.5"
 moto = { extras = ["events"], version = "^5.0.0" }
 ruff = "^0.6.0"
 mypy = "^1.11.0"
