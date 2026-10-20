@@ -9,7 +9,7 @@ packages = [{ include = "smartops_controller", from = "src" }]
 
 [tool.poetry.dependencies]
 python = "^3.12"
-kubernetes = "^31.0.0"
+kubernetes = ">=31,<38"
 boto3 = "^1.35.0"
 python-json-logger = "^2.0.7"
 fastapi = "^0.115.0"
