@@ -216,13 +216,11 @@ Per-service allowances are in [`docs/06-cost-tracker.md`](docs/06-cost-tracker.m
 
 ## Screenshots
 
-Captured during the recorded run (23–25 Sep 2026).
-
 **Slack alert with the AI root-cause analysis**
 
 ![Slack incident card with the Groq root-cause analysis](docs/img/slack-rca-card.png)
 
-**The helm installation from the terminal (`kubectl get nodes`)**
+**The two K3s nodes in two zones (`kubectl get nodes`)**
 
 ![kubectl output for the two-node K3s cluster](docs/img/kubectl-nodes.png)
 
@@ -238,15 +236,15 @@ Captured during the recorded run (23–25 Sep 2026).
 
 ![DynamoDB smartops-incidents table with the recorded incidents](docs/img/dynamodb-incidents.png)
 
-**Metrics in CloudWatch (`SmartOps` namespace)**
+**CloudWatch metrics for the RCA Lambda (`SmartOps` namespace)**
 
 ![CloudWatch SmartOps metrics](docs/img/cloudwatch-metrics.png)
 
-**Lambda function overview (`SmartOps` namespace)**
+**RCA Lambda overview (smartops-lite-rca-generator)**
 
 ![Lambda function overview SmartOps](docs/img/lambda-function-overview.png)
 
-**Lambda function EventBridge (`SmartOps` namespace)**
+**EventBridge rule that triggers the RCA Lambda  (`SmartOps` namespace)**
 
 ![Lambda function event-bridge](docs/img/event-bridge.png)
 
@@ -254,11 +252,11 @@ Captured during the recorded run (23–25 Sep 2026).
 
 ![ECR Repositories](docs/img/ecr-repositories.png)
 
-**EC2 Instances (`SmartOps` namespace)**
+**EC2 Instances (K3s server and agent)**
 
 ![EC2 Instances](docs/img/ec2-instances.png)
 
-**Lambda function (`SmartOps` namespace)**
+**The three Lambda function (`SmartOps` namespace)**
 
 ![Lambda functions](docs/img/lambda-functions.png)
 
