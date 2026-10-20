@@ -1,0 +1,360 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "SmartOps-Lite Module 9 — 5-metric free-tier-safe dashboard sourced from the mttr-aggregator Lambda's CloudWatch namespace (SmartOps) plus CloudWatch Logs Insights breakouts against the rca-generator log group.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "row",
+      "id": 100,
+      "title": "Headline (CloudWatch custom metrics — SmartOps namespace)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "id": 1,
+      "title": "Incidents (last 1h)",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "targets": [
+        {
+          "refId": "A",
+          "namespace": "${namespace}",
+          "metricName": "IncidentCount",
+          "statistic": "Sum",
+          "dimensions": {},
+          "region": "${region}",
+          "period": "300",
+          "matchExact": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 20 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 2,
+      "title": "MTTR (avg)",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "targets": [
+        {
+          "refId": "A",
+          "namespace": "${namespace}",
+          "metricName": "MTTRSecondsAvg",
+          "statistic": "Average",
+          "dimensions": {},
+          "region": "${region}",
+          "period": "300",
+          "matchExact": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 120 },
+              { "color": "red", "value": 600 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "gauge",
+      "id": 3,
+      "title": "Ack rate",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "targets": [
+        {
+          "refId": "A",
+          "namespace": "${namespace}",
+          "metricName": "AckRatePercent",
+          "statistic": "Average",
+          "dimensions": {},
+          "region": "${region}",
+          "period": "300",
+          "matchExact": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "green", "value": 80 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      }
+    },
+    {
+      "type": "gauge",
+      "id": 4,
+      "title": "LLM success rate (Groq vs fallback)",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "targets": [
+        {
+          "refId": "A",
+          "namespace": "${namespace}",
+          "metricName": "LLMSuccessRatePercent",
+          "statistic": "Average",
+          "dimensions": {},
+          "region": "${region}",
+          "period": "300",
+          "matchExact": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "green", "value": 90 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      }
+    },
+    {
+      "type": "row",
+      "id": 101,
+      "title": "Trends",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "id": 5,
+      "title": "Incidents over time",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "targets": [
+        {
+          "refId": "A",
+          "namespace": "${namespace}",
+          "metricName": "IncidentCount",
+          "statistic": "Sum",
+          "dimensions": {},
+          "region": "${region}",
+          "period": "300",
+          "matchExact": true,
+          "alias": "total"
+        },
+        {
+          "refId": "B",
+          "namespace": "${namespace}",
+          "metricName": "AckedIncidentCount",
+          "statistic": "Sum",
+          "dimensions": {},
+          "region": "${region}",
+          "period": "300",
+          "matchExact": true,
+          "alias": "acknowledged"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "spanNulls": true }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 6,
+      "title": "MTTR (rolling avg, seconds)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "targets": [
+        {
+          "refId": "A",
+          "namespace": "${namespace}",
+          "metricName": "MTTRSecondsAvg",
+          "statistic": "Average",
+          "dimensions": {},
+          "region": "${region}",
+          "period": "300",
+          "matchExact": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "spanNulls": true },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 120 },
+              { "color": "red", "value": 600 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      }
+    },
+    {
+      "type": "row",
+      "id": 102,
+      "title": "Breakouts (CloudWatch Logs Insights — free within 5 GB ingest)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+      "collapsed": false
+    },
+    {
+      "type": "table",
+      "id": 7,
+      "title": "Top reasons (last 1 h)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "targets": [
+        {
+          "refId": "A",
+          "queryMode": "Logs",
+          "region": "${region}",
+          "logGroupNames": ["/aws/lambda/smartops-lite-rca-generator"],
+          "expression": "fields @timestamp, reason\n| filter ispresent(reason)\n| stats count(*) as incidents by reason\n| sort incidents desc\n| limit 10"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } }
+      },
+      "options": { "showHeader": true }
+    },
+    {
+      "type": "piechart",
+      "id": 8,
+      "title": "RCA source split (groq / fallback / none)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "targets": [
+        {
+          "refId": "A",
+          "queryMode": "Logs",
+          "region": "${region}",
+          "logGroupNames": ["/aws/lambda/smartops-lite-rca-generator"],
+          "expression": "fields @timestamp, rcaSource\n| filter ispresent(rcaSource)\n| stats count(*) as n by rcaSource"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": {
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "pieType": "donut",
+        "legend": { "displayMode": "list", "placement": "right", "showLegend": true }
+      }
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["smartops-lite", "module-9", "cloudwatch"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "SmartOps", "value": "SmartOps" },
+        "description": "CloudWatch namespace the aggregator publishes to. Matches var.mttr_metric_namespace in Terraform.",
+        "hide": 0,
+        "label": "namespace",
+        "name": "namespace",
+        "options": [{ "selected": true, "text": "SmartOps", "value": "SmartOps" }],
+        "query": "SmartOps",
+        "skipUrlSync": false,
+        "type": "textbox"
+      },
+      {
+        "current": { "selected": false, "text": "ap-south-1", "value": "ap-south-1" },
+        "description": "AWS region the CloudWatch metrics live in. Matches var.region in Terraform.",
+        "hide": 0,
+        "label": "region",
+        "name": "region",
+        "options": [{ "selected": true, "text": "ap-south-1", "value": "ap-south-1" }],
+        "query": "ap-south-1",
+        "skipUrlSync": false,
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "SmartOps — MTTR & Incidents",
+  "uid": "smartops-mttr-v1",
+  "version": 1,
+  "weekStart": ""
+}

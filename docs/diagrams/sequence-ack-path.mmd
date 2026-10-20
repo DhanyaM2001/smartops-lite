@@ -1,0 +1,49 @@
+%% SmartOps-Lite — Ack Path Sequence (§4.2 in END-TO-END.md)
+%% Slack button click → HMAC verify → conditional DDB update → Slack response
+%% Optional path: not connected to Slack in the v1.0 recorded run (see README known limitations).
+%% Render: npx -y @mermaid-js/mermaid-cli -i docs/diagrams/sequence-ack-path.mmd -o docs/img/sequence-ack-path.png -w 1600 -H 1200 --theme dark
+
+sequenceDiagram
+    autonumber
+    actor Eng as Engineer
+    participant Slack as Slack
+    participant URL as Lambda Function URL
+    participant Rem as remediator Lambda
+    participant SSM as SSM SecureString
+    participant Verify as verify.py<br/>(HMAC)
+    participant DDB as DynamoDB
+    participant Bus as EventBridge
+
+    Eng->>Slack: click "Acknowledge" button
+    Slack->>URL: POST /<br/>payload=block_actions<br/>X-Slack-Signature: v0=hmac
+    URL->>Rem: invoke (sync)
+    alt cold start
+        Rem->>SSM: GetParameter(signing_secret)
+        SSM-->>Rem: signing_secret
+    end
+    Rem->>Verify: verify_signature(hdrs, body, secret)
+    Verify->>Verify: check timestamp ≤ 300s
+    Verify->>Verify: hmac.compare_digest (constant-time)
+    alt bad signature
+        Verify-->>Rem: raise VerifyError
+        Rem-->>Slack: HTTP 401
+        Note over Rem,DDB: NO DDB write, NO bus event
+    else valid
+        Verify-->>Rem: OK
+        Rem->>Rem: parse block_actions payload
+        Rem->>DDB: UpdateItem(<br/>Key=incidentId,<br/>Cond: row exists AND rcaStatus ≠ acknowledged,<br/>Set: acknowledged/by/at)
+        alt condition passes
+            DDB-->>Rem: 200 OK
+            opt reason in whitelist
+                Rem-->>Bus: PutEvents(RemediationRequested)
+                Note right of Bus: (nothing consumes yet<br/> — Module 7.1 deferred)
+            end
+            Rem->>Slack: 200 OK<br/>+ replacement block payload<br/>(strips button, adds footer)
+            Slack-->>Eng: renders acked card
+        else ConditionalCheckFailedException
+            Rem->>DDB: GetItem(incidentId) to read prior actor
+            DDB-->>Rem: rcaStatus=acknowledged by <@other>
+            Rem->>Slack: 200 OK<br/>+ echo prior actor
+            Slack-->>Eng: "Already acked by <@other>"
+        end
+    end

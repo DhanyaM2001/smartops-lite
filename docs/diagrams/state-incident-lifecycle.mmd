@@ -1,0 +1,15 @@
+%% SmartOps-Lite — Incident Lifecycle State Machine (§5.1 in END-TO-END.md)
+%% DDB row state transitions: generated / pending → acknowledged (with double-click branch)
+%% Render: npx -y @mermaid-js/mermaid-cli -i docs/diagrams/state-incident-lifecycle.mmd -o docs/img/state-incident-lifecycle.png -w 1400 -H 900 --theme dark
+
+stateDiagram-v2
+    [*] --> generated: RCA Lambda PutItem<br/>Groq returned an RCA
+    [*] --> pending: RCA Lambda PutItem<br/>LLM off or Groq failed (placeholder text)
+    generated --> generated: duplicate event<br/>[PutItem condition fails — swallowed]
+    generated --> acknowledged: Remediator UpdateItem<br/>[condition passes]
+    pending --> acknowledged: Remediator UpdateItem<br/>[condition passes]
+
+    acknowledged --> acknowledged: double-click<br/>[ConditionalCheckFailed]<br/>Slack echoes prior actor
+
+    generated --> remediated: (future — Module 7.1)<br/>kubectl-executor auto-fix
+    acknowledged --> remediated: (future — Module 7.1)

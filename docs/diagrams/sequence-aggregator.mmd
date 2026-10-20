@@ -1,0 +1,32 @@
+%% SmartOps-Lite — MTTR Aggregation Sequence (§4.3 in END-TO-END.md)
+%% 5-min schedule tick → DDB scan → pure compute → CloudWatch → Grafana
+%% Render: npx -y @mermaid-js/mermaid-cli -i docs/diagrams/sequence-aggregator.mmd -o docs/img/sequence-aggregator.png -w 1600 -H 1000 --theme dark
+
+sequenceDiagram
+    autonumber
+    participant Sched as EventBridge<br/>scheduled rule
+    participant Agg as mttr-aggregator Lambda
+    participant DDB as DynamoDB
+    participant Pure as aggregator.py<br/>(pure function)
+    participant CW as CloudWatch<br/>SmartOps namespace
+    participant Graf as Grafana Cloud<br/>(optional)
+    actor Eng as Engineer
+
+    loop every 5 minutes
+        Sched->>Agg: invoke ({time: ISO8601})
+        Agg->>Agg: now = _now_from_event(event)
+        Agg->>DDB: Scan(<br/>FilterExpression: ingestedAt >= now-60min)
+        DDB-->>Agg: rows[]
+        Agg->>Pure: compute_metrics(rows, now)
+        Pure-->>Agg: [<br/> IncidentCount,<br/> AckedIncidentCount,<br/> AckRatePercent,<br/> LLMSuccessRatePercent,<br/> MTTRSecondsAvg<br/>]
+        Agg->>CW: PutMetricData(batch of ≤ 5)<br/>MTTRSecondsAvg only if a row was acked
+    end
+
+    loop every 30s (dashboard refresh)
+        Graf->>CW: GetMetricData(SmartOps.*)
+        CW-->>Graf: values + timestamps
+        Graf->>Graf: render 8 panels
+    end
+
+    Eng->>Graf: view dashboard
+    Graf-->>Eng: MTTR trend, ack rate, headline stats

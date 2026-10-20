@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "crashy-app.fullname" . }}
+  labels: {{- include "crashy-app.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels: {{- include "crashy-app.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      {{- if eq .Values.affinityMode "required" }}
+      # Required one-pod-per-zone anti-affinity leaves no free zone for a
+      # surge pod, so a surge-first rollout would hang with the extra pod
+      # Pending. Replace one pod at a time instead; the other keeps serving.
+      maxUnavailable: 1
+      maxSurge: 0
+      {{- else }}
+      maxUnavailable: 0
+      maxSurge: 1
+      {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "crashy-app.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # Force a rolling restart on any values-file change (checksum of
+        # rendered ConfigMap or plain values). Cheap; useful as a
+        # deploy-time "did helm actually update?" signal.
+        checksum/values: {{ .Values | toYaml | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "crashy-app.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      # ---- Anti-affinity: one pod per topology.kubernetes.io/zone -------
+      # K3s nodes get this label via cloud-init (see infra/modules/k3s/
+      # cloud-init.yaml.tftpl — the fix landed in the Module 2.1 audit).
+      {{- if ne .Values.affinityMode "none" }}
+      affinity:
+        podAntiAffinity:
+          {{- if eq .Values.affinityMode "required" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels: {{- include "crashy-app.selectorLabels" . | nindent 18 }}
+              topologyKey: topology.kubernetes.io/zone
+          {{- else if eq .Values.affinityMode "preferred" }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels: {{- include "crashy-app.selectorLabels" . | nindent 20 }}
+                topologyKey: topology.kubernetes.io/zone
+          {{- end }}
+      {{- end }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      containers:
+        - name: crashy
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            # Downward-API injection so /root and X-Pod-* headers show
+            # which pod/node served each request. This is what makes the
+            # anti-affinity spread observable from a curl loop.
+            #
+            # POD_ZONE intentionally NOT exposed via Downward API here:
+            # metadata.labels['topology.kubernetes.io/zone'] reads a POD
+            # label, but that label is only set on NODES by K3s. Using it
+            # would cause CreateContainerConfigError on every scheduling.
+            # The app defaults POD_ZONE to "unknown"; to observe the
+            # zone map, run `make chaos-info` (joins pods → nodes → zones
+            # via `kubectl get nodes -L topology.kubernetes.io/zone`).
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NODE
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe: {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe: {{- toYaml .Values.readinessProbe | nindent 12 }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          # /tmp needed because readOnlyRootFilesystem is true and some
+          # Python libs (e.g. matplotlib font cache — not used today but
+          # cheap insurance) write to /tmp during startup.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi

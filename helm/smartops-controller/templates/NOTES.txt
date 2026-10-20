@@ -1,0 +1,23 @@
+smartops-controller {{ .Chart.AppVersion }} installed.
+
+  namespace: {{ .Release.Namespace }}
+  release:   {{ .Release.Name }}
+  image:     {{ .Values.image.repository }}:{{ .Values.image.tag }}
+  bus:       {{ .Values.env.EVENT_BUS_NAME }}  (dry_run={{ .Values.env.DRY_RUN }})
+
+Watch the controller:
+
+  kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/instance={{ .Release.Name }} -f
+
+Health / metrics:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "smartops-controller.fullname" . }} 8081:80
+  curl -s localhost:8081/healthz
+  curl -s localhost:8081/ready
+  curl -s localhost:8081/metrics | jq
+
+Trigger an incident to test the pipeline:
+
+  make chaos-crash          # CrashLoopBackOff in crashy-app
+  make chaos-oom            # OOMKilled in crashy-app
+  # Then watch controller logs for "published incident" or "dry-run publish".

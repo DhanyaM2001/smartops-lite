@@ -1,0 +1,109 @@
+{
+  "name": "smartops-lite",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+
+  // ---- Features -------------------------------------------------------
+  // Official devcontainer features layer common tools on top of the base
+  // image. We use them for anything with a well-maintained feature; anything
+  // else (kind, yq, tfenv-pinned Terraform) is installed by Dockerfile.
+  //
+  // "docker-outside-of-docker" mounts the host Docker socket, so `docker`
+  // inside the devcontainer talks to the HOST daemon. This is what lets
+  // `make local-up` create a kind cluster on your laptop and have it be
+  // usable from either the devcontainer or the host.
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": false,
+      "installOhMyZsh": false,
+      "upgradePackages": false
+    },
+    "ghcr.io/devcontainers/features/aws-cli:1": {},
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
+      "minikube": "none",
+      "helm": "latest",
+      "kubectl": "1.29"
+    },
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+      "moby": true,
+      "installDockerBuildx": true
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12",
+      "installTools": true,
+      "toolsToInstall": "poetry,pipx"
+    }
+  },
+
+  // ---- VS Code integration --------------------------------------------
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "python.defaultInterpreterPath": "/usr/local/python/current/bin/python",
+        "python.terminal.activateEnvironment": false,
+        "editor.formatOnSave": true,
+        "[python]": { "editor.defaultFormatter": "charliermarsh.ruff" },
+        "[terraform]": { "editor.defaultFormatter": "hashicorp.terraform" },
+        "[yaml]": { "editor.defaultFormatter": "redhat.vscode-yaml" },
+        "files.eol": "\n"
+      },
+      "extensions": [
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "ms-python.mypy-type-checker",
+        "hashicorp.terraform",
+        "redhat.vscode-yaml",
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "ms-azuretools.vscode-docker",
+        "eamodio.gitlens",
+        "yzhang.markdown-all-in-one",
+        "davidanson.vscode-markdownlint"
+      ]
+    }
+  },
+
+  // ---- Post-create ----------------------------------------------------
+  // Runs once after the container is created. Verifies every tool + prints
+  // a friendly welcome banner with next steps.
+  "postCreateCommand": "bash .devcontainer/postCreate.sh",
+
+  // ---- Ports ----------------------------------------------------------
+  // Forwards these ports from the devcontainer to the host so you can
+  // hit them from a host browser.
+  "forwardPorts": [18080, 3000, 6443, 5001],
+  "portsAttributes": {
+    "18080": {
+      "label": "crashy-app (chaos.sh port-forward)",
+      "onAutoForward": "silent"
+    },
+    "3000": {
+      "label": "Grafana (Module 9)",
+      "onAutoForward": "silent"
+    },
+    "6443": {
+      "label": "K3s / kind API",
+      "onAutoForward": "silent"
+    },
+    "5001": {
+      "label": "Local kind registry (make local-up)",
+      "onAutoForward": "silent"
+    }
+  },
+
+  // ---- Container settings --------------------------------------------
+  "remoteUser": "vscode",
+  "workspaceFolder": "/workspaces/smartops-lite",
+  "containerEnv": {
+    "AWS_PROFILE": "smartops",
+    "AWS_REGION": "ap-south-1",
+    "KUBECONFIG": "/home/vscode/.kube/config-smartops"
+  },
+
+  // ---- Lifecycle -----------------------------------------------------
+  // Ensure ~/.kube exists inside the container so kubectl commands work
+  // before any cluster is up. Silence any harmless "already exists".
+  "onCreateCommand": "mkdir -p /home/vscode/.kube"
+}

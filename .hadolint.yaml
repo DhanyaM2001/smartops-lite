@@ -1,0 +1,19 @@
+# hadolint config — used by `make lint` and CI.
+#
+# We accept a few rules that don't match our patterns:
+#   DL3008 (pin apt versions)     — Ubuntu package versions drift monthly;
+#                                    pinning them creates constant churn.
+#   DL3013 (pin pip versions)     — poetry already pins via poetry.lock.
+#   DL3059 (multiple RUN chains)  — false-positive on legitimate multi-stage.
+
+ignored:
+  - DL3008
+  - DL3013
+  - DL3059
+
+failure-threshold: warning
+
+trustedRegistries:
+  - docker.io
+  - ghcr.io
+  - public.ecr.aws

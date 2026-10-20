@@ -1,0 +1,75 @@
+%% SmartOps-Lite — end-to-end architecture (Mermaid source).
+%%
+%% Regenerate the PNG that README.md embeds:
+%%   1. Local (fast):    npx -y @mermaid-js/mermaid-cli -i docs/diagrams/architecture.mmd -o docs/img/architecture.png -w 1600 -H 900 --theme dark
+%%   2. Web (no npm):    paste into https://mermaid.live/, "Actions → PNG", save as docs/img/architecture.png
+%%   3. Commit both:     git add docs/diagrams/architecture.mmd docs/img/architecture.png
+%%
+%% Edit the .mmd (not the .png). The .mmd is the source of truth.
+
+flowchart LR
+    %% ---- Developer + K8s cluster ----
+    Dev[Developer<br/>make tf-apply / make chaos-crash]:::actor
+    subgraph K3S["K3s cluster — 2 × t3.micro (multi-AZ)"]
+        direction TB
+        Crashy["crashy-app<br/>(FastAPI, 2 replicas)<br/>hard anti-affinity"]:::pod
+        Ctrl["smartops-controller<br/>(K8s watch → EventBridge)<br/>LRU dedup cache"]:::pod
+        Crashy -.->|"pod events<br/>CrashLoop / OOM / etc."| Ctrl
+    end
+    Dev -->|"kubectl / helm"| K3S
+
+    %% ---- Event bus + Lambdas ----
+    Bus{{"EventBridge<br/>custom bus"}}:::bus
+    Ctrl -->|"IncidentDetected<br/>(schema v1.0)"| Bus
+
+    RcaFn["rca-generator Lambda<br/>Python 3.12"]:::lambda
+    Rem["remediator Lambda<br/>(Slack Ack receiver)"]:::lambda
+    Mttr["mttr-aggregator Lambda<br/>rate(5 min) schedule"]:::lambda
+
+    Sched{{"EventBridge default bus<br/>schedule rule"}}:::bus
+    Bus -->|"rule: IncidentDetected"| RcaFn
+    Sched -->|"rate(5 minutes)"| Mttr
+    Rem -.->|"RemediationRequested<br/>(no consumer yet — Module 7.1)"| Bus
+
+    %% ---- Persistence + secrets ----
+    DDB[("DynamoDB<br/>smartops-incidents<br/>on-demand")]:::store
+    SSM[["SSM SecureString<br/>slack_webhook · groq_api_key<br/>(+ optional slack_signing_secret)<br/>KMS aws/ssm"]]:::secret
+    RcaFn -->|"cold-start<br/>GetParameters (batched)"| SSM
+    RcaFn -->|"PutItem / UpdateItem<br/>idempotent by incidentId"| DDB
+    Rem -->|"UpdateItem<br/>rcaStatus→acknowledged"| DDB
+    Rem -->|"cold-start<br/>signing secret"| SSM
+    Mttr -->|"Scan (60-min window)"| DDB
+
+    %% ---- External services ----
+    Groq(["Groq LLM<br/>qwen/qwen3.8-27b<br/>(free tier)"]):::ext
+    Slack(["Slack workspace<br/>#smartops-alerts"]):::ext
+    RcaFn -->|"chat/completions<br/>HTTP + urllib"| Groq
+    RcaFn -->|"Block Kit card<br/>+ Acknowledge button"| Slack
+    Slack -.->|"block_actions POST<br/>HMAC signed (optional)"| RemURL
+    RemURL[["Lambda Function URL<br/>(HTTPS, IAM-none)"]]:::fnurl
+    RemURL --> Rem
+
+    %% ---- Observability out ----
+    CW[("CloudWatch<br/>metrics: SmartOps<br/>(≤ 5 no-dim series)<br/>logs: /aws/lambda/*")]:::store
+    Mttr -->|"PutMetricData<br/>(cwnamespace-gated)"| CW
+    RcaFn -.->|"logs"| CW
+    Rem -.->|"logs"| CW
+
+    Graf(["Grafana Cloud<br/>(free tier, optional)"]):::ext
+    CW -.->|"CloudWatch data source<br/>+ Logs Insights queries"| Graf
+    Graf -.-> Dev
+
+    %% ---- CI/CD ----
+    GH[["GitHub Actions<br/>ci.yml + security.yml"]]:::ci
+    GH -.->|"lint / validate / test<br/>Trivy + Gitleaks"| K3S
+    Dev -->|"git push"| GH
+
+    classDef actor    fill:#fff8dc,stroke:#c8a417,color:#333;
+    classDef pod      fill:#e6f2ff,stroke:#2563eb,color:#111;
+    classDef lambda   fill:#fef3c7,stroke:#d97706,color:#111;
+    classDef bus      fill:#f3e8ff,stroke:#7c3aed,color:#111;
+    classDef store    fill:#ecfdf5,stroke:#059669,color:#111;
+    classDef secret   fill:#fee2e2,stroke:#dc2626,color:#111;
+    classDef ext      fill:#f5f5f5,stroke:#525252,color:#111;
+    classDef fnurl    fill:#fef3c7,stroke:#d97706,color:#111,stroke-dasharray: 5 5;
+    classDef ci       fill:#e0e7ff,stroke:#4f46e5,color:#111;

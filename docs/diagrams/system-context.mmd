@@ -1,0 +1,32 @@
+%% SmartOps-Lite — System Context (§1 in END-TO-END.md)
+%% The one-slide, hero-image view: everything outside the box is external.
+%% Render: npx -y @mermaid-js/mermaid-cli -i docs/diagrams/system-context.mmd -o docs/img/system-context.png -w 1600 -H 900 --theme dark
+
+flowchart LR
+    Dev[Developer / SRE<br/>on-call engineer]:::actor
+    Slack(["Slack workspace<br/>#smartops-alerts"]):::ext
+    Groq(["Groq LLM<br/>qwen/qwen3.8-27b"]):::ext
+    Graf(["Grafana Cloud<br/>dashboard (optional)"]):::ext
+
+    subgraph SmartOps["SmartOps-Lite (AWS free-tier)"]
+        direction TB
+        Ctrl[K8s controller]:::pod
+        Bus{{EventBridge}}:::bus
+        Fns[3 × Lambda]:::lambda
+        Data[(DDB + CloudWatch)]:::store
+    end
+
+    Dev -->|"kubectl / make"| SmartOps
+    Ctrl --> Bus --> Fns --> Data
+    Fns -->|"RCA prompt"| Groq
+    Fns -->|"Block Kit card"| Slack
+    Slack -.->|"Ack button click (HMAC, optional)"| Fns
+    Data -.->|"up to 5 metrics"| Graf
+    Graf --> Dev
+
+    classDef actor  fill:#fff8dc,stroke:#c8a417,color:#333;
+    classDef pod    fill:#e6f2ff,stroke:#2563eb,color:#111;
+    classDef lambda fill:#fef3c7,stroke:#d97706,color:#111;
+    classDef bus    fill:#f3e8ff,stroke:#7c3aed,color:#111;
+    classDef store  fill:#ecfdf5,stroke:#059669,color:#111;
+    classDef ext    fill:#f5f5f5,stroke:#525252,color:#111;

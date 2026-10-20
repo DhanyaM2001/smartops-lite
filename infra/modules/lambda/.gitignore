@@ -1,0 +1,2 @@
+# Generated Lambda deployment artifacts (regenerated on every `terraform plan`).
+.artifacts/

@@ -1,0 +1,101 @@
+# Default values for crashy-app.
+# Override on install with `helm install ... --set image.repository=<...>` or `-f my-values.yaml`.
+
+# ---- Image ---------------------------------------------------------------
+image:
+  # repository is the full pushable URL. `make helm-install-crashy` sets
+  # this from the terraform output `ecr_repository_urls["smartops/crashy-app"]`
+  # so you never hardcode your account ID here.
+  repository: "REPLACE_ME"   # e.g. 1234567890.dkr.ecr.ap-south-1.amazonaws.com/smartops/crashy-app
+  tag: "latest"
+  pullPolicy: Always         # matches ECR :latest workflow; switch to IfNotPresent for immutable tags
+
+# Optional imagePullSecrets — leave empty when using ECR + node IAM (default).
+imagePullSecrets: []
+
+# ---- Deployment ----------------------------------------------------------
+replicaCount: 2
+
+# Hard anti-affinity: refuse to schedule if we can't spread across zones.
+# This is intentional — the whole point of Module 2 was to make this
+# label-based scheduling work; if it silently degrades to "both on same
+# node", we lose the AZ-failure story. Set to "preferred" if you deploy
+# to a single-zone cluster (e.g. `enable_agent=false`).
+affinityMode: required   # one of: required | preferred | none
+
+# Pod-level security context (applies to all containers in the pod).
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  runAsGroup: 65534
+  fsGroup: 65534
+  seccompProfile:
+    type: RuntimeDefault
+
+# Container-level security context.
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# ---- Resources -----------------------------------------------------------
+# Sized for t3.micro (1 vCPU / 1 GiB total, ~900 MiB usable).
+# The 128Mi limit is intentional: /oom endpoint should trigger OOMKilled
+# fast enough for the demo to feel responsive.
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# ---- Probes --------------------------------------------------------------
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 2
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: http
+  initialDelaySeconds: 2
+  periodSeconds: 5
+  timeoutSeconds: 2
+  failureThreshold: 3
+
+# ---- Service -------------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 80             # cluster-facing port
+  targetPort: 8000     # container port (uvicorn)
+
+# ---- ServiceAccount ------------------------------------------------------
+serviceAccount:
+  create: true
+  name: ""             # empty -> derived from fullname template
+  annotations: {}      # Module 4 will add IRSA annotation here
+
+# ---- Runtime env vars ----------------------------------------------------
+env:
+  LOG_LEVEL: "info"
+  READY_AFTER_SECONDS: "3"
+# Additional env vars can be added under `extraEnv`:
+extraEnv: []
+#  - name: FEATURE_FLAG_X
+#    value: "true"
+
+# ---- Node selection ------------------------------------------------------
+nodeSelector: {}
+tolerations: []
+
+# ---- Labels + annotations ------------------------------------------------
+podLabels: {}
+podAnnotations: {}

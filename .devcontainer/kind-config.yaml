@@ -1,0 +1,58 @@
+# kind cluster config for `make local-up`.
+#
+# Two nodes:
+#   - 1 control-plane in "zone" local-a
+#   - 1 worker        in "zone" local-b
+# Both nodes get topology.kubernetes.io/zone labels so crashy-app's HARD
+# pod-anti-affinity across zones actually spreads (same guarantee we get
+# on real AWS in Modules 2-3).
+#
+# containerdConfigPatches: mirrors localhost:5001 to the kind-registry
+# container (running on the same Docker network). This lets you push to
+# localhost:5001 from the host + pull from kind nodes using the same tag —
+# see https://kind.sigs.k8s.io/docs/user/local-registry/
+#
+# The control-plane taint is REMOVED post-creation by scripts/local-up.sh
+# so pods can schedule on it (we only have 2 nodes — need both).
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: smartops-local
+
+networking:
+  # apiServerAddress: default "127.0.0.1"
+  # apiServerPort: default random
+  disableDefaultCNI: false        # use kindnet (fine for our needs)
+  ipFamily: ipv4
+
+nodes:
+  - role: control-plane
+    labels:
+      topology.kubernetes.io/zone: local-a
+      topology.kubernetes.io/region: local
+      smartops-lite/role: control-plane
+    # extraPortMappings: pinned to nothing — we use kubectl port-forward
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "topology.kubernetes.io/zone=local-a,topology.kubernetes.io/region=local"
+
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: local-b
+      topology.kubernetes.io/region: local
+      smartops-lite/role: worker
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "topology.kubernetes.io/zone=local-b,topology.kubernetes.io/region=local"
+
+# Mirror localhost:5001 → kind-registry:5000 inside the cluster.
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5001"]
+      endpoint = ["http://kind-registry:5000"]

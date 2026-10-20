@@ -1,0 +1,20 @@
+apiVersion: v2
+name: crashy-app
+description: |
+  Deliberately-failing FastAPI microservice used by SmartOps-Lite to exercise
+  the K8s incident-triage pipeline. Deploys with hard pod anti-affinity on
+  topology.kubernetes.io/zone so replicas spread across AZs.
+type: application
+version: 0.1.0        # chart version — bump on any template change
+appVersion: "0.1.0"   # app version — matches apps/crashy-app/pyproject.toml
+kubeVersion: ">=1.28.0-0"
+home: https://github.com/dhanym/smartops-lite
+sources:
+  - https://github.com/dhanym/smartops-lite/tree/main/apps/crashy-app
+maintainers:
+  - name: Dhanya M
+keywords:
+  - smartops-lite
+  - chaos
+  - demo
+  - fastapi

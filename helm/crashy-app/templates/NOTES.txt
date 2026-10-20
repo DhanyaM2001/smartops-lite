@@ -1,0 +1,28 @@
+crashy-app is deployed in namespace {{ .Release.Namespace }} as release "{{ .Release.Name }}".
+
+Watch the pods spread across zones:
+
+  kubectl -n {{ .Release.Namespace }} get pods \
+    -l app.kubernetes.io/instance={{ .Release.Name }} \
+    -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,STATUS:.status.phase
+
+  kubectl -n {{ .Release.Namespace }} get pods \
+    -l app.kubernetes.io/instance={{ .Release.Name }} \
+    -o jsonpath='{range .items[*]}{.metadata.name}{"  "}{.spec.nodeName}{"  "}{.metadata.labels.topology\.kubernetes\.io/zone}{"\n"}{end}'
+
+Port-forward for a local quick-look (from your laptop, KUBECONFIG set):
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "crashy-app.fullname" . }} 8080:{{ .Values.service.port }}
+  # then in another terminal:
+  curl http://localhost:8080/            # identity + pod info
+  curl http://localhost:8080/healthz     # 200 OK
+  curl http://localhost:8080/crash       # triggers CrashLoopBackOff (Module 4 detects this)
+  curl http://localhost:8080/oom         # triggers OOMKilled
+  curl http://localhost:8080/500         # 500 error
+  curl "http://localhost:8080/slow?ms=2000"
+
+Anti-affinity is currently: {{ .Values.affinityMode }}
+
+If pods are Pending with "0/N nodes are available: N Insufficient" — the affinity
+requirement can't be satisfied. On a 2-node/2-AZ cluster this should always work;
+if you're testing on a single-node cluster, set affinityMode=preferred or none.

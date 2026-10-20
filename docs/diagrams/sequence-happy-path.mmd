@@ -1,0 +1,49 @@
+%% SmartOps-Lite — Happy Path Sequence (§4.1 in END-TO-END.md)
+%% GET /crash → Slack card. ~5 seconds end-to-end.
+%% Render: npx -y @mermaid-js/mermaid-cli -i docs/diagrams/sequence-happy-path.mmd -o docs/img/sequence-happy-path.png -w 1600 -H 1200 --theme dark
+
+sequenceDiagram
+    autonumber
+    actor Dev as Developer
+    participant CA as crashy-app pod<br/>(FastAPI)
+    participant Kubelet as kubelet<br/>(K3s node)
+    participant Api as K8s API server
+    participant Ctrl as smartops-controller
+    participant LRU as LRU dedup set
+    participant Bus as EventBridge<br/>smartops-dev
+    participant Rca as rca-generator<br/>Lambda
+    participant SSM as SSM<br/>SecureString
+    participant Groq as Groq LLM
+    participant DDB as DynamoDB
+    participant Slack as Slack channel
+
+    Dev->>CA: GET /crash (via kubectl port-forward)
+    CA->>CA: os._exit(1)
+    CA-->>Kubelet: container exited (code 1)
+    Kubelet->>Kubelet: restart container in the same pod (restartCount 1)
+    Kubelet->>Api: update pod status (lastState: Error, exit 1)
+    Ctrl->>Api: watch all pods (Watch API)
+    Api-->>Ctrl: MODIFIED pod event
+    Ctrl->>Ctrl: detector.detect() → Incident
+    Ctrl->>LRU: check (ns,pod,ctr,reason)
+    LRU-->>Ctrl: not seen — publish
+    Ctrl->>Bus: PutEvents(IncidentDetected)
+
+    Note over Bus,Rca: (rule: source=smartops.controller<br/> → target: rca-generator)
+
+    Bus->>Rca: invoke (async)
+    alt cold start
+        Rca->>SSM: GetParameters(2 params, batched)
+        SSM-->>Rca: {slack_webhook, groq_key}
+    end
+    Rca->>Rca: parse_event() [fail-loud on schema]
+    Rca->>Groq: POST /v1/chat/completions
+    alt Groq OK
+        Groq-->>Rca: 2-sentence RCA
+    else Groq timeout/error
+        Rca->>Rca: rcaText = placeholder<br/>rcaSource = fallback
+    end
+    Rca->>DDB: PutItem(incidentId, ...)
+    DDB-->>Rca: 200 OK
+    Rca->>Slack: POST Block Kit card
+    Slack-->>Dev: renders red-headed alert<br/>with Acknowledge button

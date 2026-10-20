@@ -1,0 +1,61 @@
+%% SmartOps-Lite — IAM Permission Graph (§7 in END-TO-END.md)
+%% Every principal → every AWS resource action they can perform.
+%% Render: npx -y @mermaid-js/mermaid-cli -i docs/diagrams/iam-permission-graph.mmd -o docs/img/iam-permission-graph.png -w 1800 -H 1200 --theme dark
+
+flowchart LR
+    subgraph Principals["Principals (IAM identities)"]
+        User[IAM user<br/>smartops-cli]:::actor
+        NodeRole[Node role<br/>K3s server + agent]:::pod
+        LRca[Role: rca-generator]:::lambda
+        LRem[Role: remediator]:::lambda
+        LAgg[Role: mttr-aggregator]:::lambda
+    end
+
+    subgraph AWS_Actions["AWS resources"]
+        S3[("S3<br/>smartops-lite-tf-state-‹account-id›")]:::store
+        DDBLock[(DDB<br/>smartops-lite-tf-lock)]:::store
+        DDBData[(DDB<br/>smartops-incidents)]:::store
+        Bus{{EventBridge<br/>smartops-dev}}:::bus
+        SSMSec[["SSM /smartops/dev/*<br/>slack_webhook · groq_api_key<br/>(+ optional slack_signing_secret)"]]:::secret
+        SSMK3s[["SSM /smartops/dev/*<br/>kubeconfig · k3s_join_token<br/>k3s_server_url · k3s_server_instance_id"]]:::secret
+        KMSKey[[KMS<br/>alias/aws/ssm]]:::secret
+        CWMetrics[(CW<br/>SmartOps ns)]:::store
+        CWLogs[(CW Logs<br/>/aws/lambda/*)]:::store
+        ECRImg[(ECR<br/>2 repos)]:::store
+    end
+
+    %% User (via CLI + Terraform)
+    User -->|"* (admin for TF)"| S3
+    User -->|"* (admin for TF)"| DDBLock
+
+    %% Node role
+    NodeRole -->|"events:PutEvents (1 ARN)"| Bus
+    NodeRole -->|"ecr:GetAuthorizationToken<br/>ecr:BatchGet* / GetDownload*"| ECRImg
+    NodeRole -->|"ssm:PutParameter<br/>(these 4 ARNs only)"| SSMK3s
+    NodeRole -->|"ssm:GetParameter(s)<br/>/smartops/dev/*"| SSMSec
+    NodeRole -->|"kms:Decrypt<br/>(via kms:ViaService=ssm)"| KMSKey
+
+    %% RCA Lambda role
+    LRca -->|"dynamodb:PutItem/UpdateItem/GetItem<br/>(1 table ARN)"| DDBData
+    LRca -->|"ssm:GetParameters<br/>(2 param ARNs)"| SSMSec
+    LRca -->|"kms:Decrypt<br/>(via kms:ViaService=ssm)"| KMSKey
+    LRca -->|"logs:CreateLogGroup/Stream<br/>PutLogEvents"| CWLogs
+
+    %% Remediator role
+    LRem -->|"dynamodb:UpdateItem<br/>GetItem"| DDBData
+    LRem -->|"events:PutEvents<br/>(1 bus ARN)"| Bus
+    LRem -->|"ssm:GetParameter<br/>(signing_secret only)"| SSMSec
+    LRem -->|"kms:Decrypt<br/>(kms:ViaService=ssm)"| KMSKey
+    LRem -->|"logs:*"| CWLogs
+
+    %% Aggregator role
+    LAgg -->|"dynamodb:Scan"| DDBData
+    LAgg -->|"cloudwatch:PutMetricData<br/>(Condition: cloudwatch:namespace=SmartOps)"| CWMetrics
+    LAgg -->|"logs:*"| CWLogs
+
+    classDef actor  fill:#fff8dc,stroke:#c8a417,color:#333;
+    classDef pod    fill:#e6f2ff,stroke:#2563eb,color:#111;
+    classDef lambda fill:#fef3c7,stroke:#d97706,color:#111;
+    classDef bus    fill:#f3e8ff,stroke:#7c3aed,color:#111;
+    classDef store  fill:#ecfdf5,stroke:#059669,color:#111;
+    classDef secret fill:#fee2e2,stroke:#dc2626,color:#111;

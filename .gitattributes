@@ -1,0 +1,43 @@
+# Force LF line endings for anything that runs in bash / Docker / Linux.
+# This prevents Windows editors from silently CRLF-ing files that must be
+# `bash`-executable on Linux (setup-wsl.sh already burned once — see the
+# design-audit change log in docs/REFERENCE.md §11).
+#
+# Rule: LF for source + config; auto for prose; binary explicitly marked.
+
+# ---- Force LF ----
+*.sh              text eol=lf
+*.py              text eol=lf
+*.yaml            text eol=lf
+*.yml             text eol=lf
+*.tf              text eol=lf
+*.tftpl           text eol=lf
+*.tpl             text eol=lf
+Makefile          text eol=lf
+Dockerfile        text eol=lf
+.dockerignore     text eol=lf
+.gitignore        text eol=lf
+.gitattributes    text eol=lf
+.env.example      text eol=lf
+*.toml            text eol=lf
+*.cfg             text eol=lf
+*.ini             text eol=lf
+*.json            text eol=lf
+*.jsonc           text eol=lf
+*.md              text eol=lf
+*.mmd             text eol=lf
+*.txt             text eol=lf
+*.hcl             text eol=lf
+*.example         text eol=lf
+.helmignore       text eol=lf
+
+# ---- Explicit binary ----
+*.png             binary
+*.jpg             binary
+*.jpeg            binary
+*.gif             binary
+*.pdf             binary
+*.zip             binary
+*.tar.gz          binary
+*.woff            binary
+*.woff2           binary

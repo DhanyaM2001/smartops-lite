@@ -1,0 +1,299 @@
+#cloud-config
+# Bootstrap a K3s ${role} node on first boot.
+#
+# Terraform template vars available (interpolated at plan time):
+#   $${role}                  — "server" or "agent"
+#   $${env}                   — environment name (dev/staging/prod)
+#   $${ssm_kubeconfig_param}  — SSM parameter path for kubeconfig (server only)
+#   $${region}                — AWS region
+#   $${server_instance_id}    — (agent only) the server this agent must join
+#
+# On every node first: stop Ubuntu services a headless K3s node never uses,
+# add 1 GiB of swap, and start a timer that prints memory use to the serial
+# console (t3.micro has 1 GiB of RAM).
+#
+# What this does on the server node:
+#   1) Install K3s server with sane defaults (write-kubeconfig-mode=644,
+#      disable traefik+servicelb so we can install our own later, and the
+#      unused metrics-server + local-storage add-ons).
+#   2) Tag the node with topology.kubernetes.io/{zone,region} labels — K3s
+#      doesn't ship the AWS cloud controller, so we set these manually from
+#      IMDS. Required for pod anti-affinity by zone (Module 3+).
+#   3) Wait for the node to reach Ready state.
+#   4) Rewrite the kubeconfig so `server:` points to the instance's public
+#      IPv4, then upload it to SSM as a SecureString.
+#   5) Also upload the join token + server URL for the agent (Module 2).
+#   6) Last, stamp /smartops/<env>/k3s_server_instance_id with its own ID.
+#
+# What this does on the agent node (Module 2):
+#   1) Fetch AZ from IMDS.
+#   2) Wait until k3s_server_instance_id names the server Terraform just
+#      created, then read /smartops/<env>/k3s_join_token + k3s_server_url.
+#   3) Join with the standard K3s agent installer, applying topology labels.
+#
+# All commands run as root during first-boot.
+# Logs land in /var/log/cloud-init-output.log.
+
+package_update: true
+package_upgrade: false
+
+# No `awscli` here: Ubuntu 24.04 dropped that apt package, and one unknown
+# name fails the whole batch. AWS CLI v2 is installed by the bootstrap script.
+packages:
+  - curl
+  - jq
+  - unzip
+
+write_files:
+  # Writes to the serial console so `aws ec2 get-console-output` shows it
+  # even when SSM is unreachable.
+  - path: /usr/local/sbin/mem-report.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      {
+        echo "[mem] $(date -u +%FT%TZ) uptime=$(cut -d' ' -f1 /proc/uptime)s"
+        free -m | sed 's/^/[mem] /'
+        ps -eo rss=,comm= --sort=-rss | head -15 \
+          | awk '{printf "[mem] %7.1f MB  %s\n", $1/1024, $2}'
+      } > /dev/console
+
+  - path: /etc/systemd/system/mem-report.service
+    content: |
+      [Unit]
+      Description=Print memory use to the serial console
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/mem-report.sh
+
+  - path: /etc/systemd/system/mem-report.timer
+    content: |
+      [Unit]
+      Description=Print memory use to the serial console every 15 minutes
+
+      [Timer]
+      OnBootSec=5min
+      OnUnitActiveSec=15min
+
+      [Install]
+      WantedBy=timers.target
+
+  - path: /usr/local/sbin/bootstrap-k3s.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      ROLE="${role}"
+      ENV_="${env}"
+      SSM_KCONF_PARAM="${ssm_kubeconfig_param}"
+      REGION="${region}"
+
+      # Derived SSM paths (env-scoped)
+      SSM_JOIN_TOKEN="/smartops/$${ENV_}/k3s_join_token"
+      SSM_SERVER_URL="/smartops/$${ENV_}/k3s_server_url"
+      SSM_SERVER_ID="/smartops/$${ENV_}/k3s_server_instance_id"
+
+      # ---- Memory budget (t3.micro: 1 GiB RAM) -----------------------------
+      # None of these do anything on a headless EC2 node, and fwupd alone
+      # can hold ~170 MB. snapd must stay: the SSM agent is a snap.
+      systemctl mask --now \
+        fwupd.service fwupd-refresh.timer ModemManager.service udisks2.service \
+        multipathd.service multipathd.socket apport.service packagekit.service \
+        unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer || true
+
+      # K3s runs the kubelet with fail-swap-on=false, so swap is allowed.
+      if [ ! -f /swapfile ]; then
+        fallocate -l 1G /swapfile
+        chmod 600 /swapfile
+        mkswap /swapfile >/dev/null
+        swapon /swapfile
+        echo '/swapfile none swap sw 0 0' >> /etc/fstab
+      fi
+
+      systemctl daemon-reload
+      systemctl enable --now mem-report.timer
+
+      # ---- AWS CLI v2 (every SSM call below needs it) --------------------
+      if ! command -v aws >/dev/null 2>&1; then
+        curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+        unzip -q /tmp/awscliv2.zip -d /tmp
+        /tmp/aws/install
+        rm -rf /tmp/awscliv2.zip /tmp/aws
+      fi
+
+      # ---- ECR credential provider (must exist before K3s starts) --------
+      # K3s hands /var/lib/rancher/credentialprovider/{bin,config.yaml} to the
+      # kubelet when present, so private ECR images pull with the node's IAM
+      # role. Write config.yaml only if the binary downloaded: the kubelet
+      # refuses to start when the config names a missing binary.
+      # v1.29.0 is the newest build on artifacts.k8s.io (later releases were
+      # never published there — kubernetes/cloud-provider-aws#1324). Its
+      # credentialprovider v1 API is still what current kubelets speak.
+      ECR_CRED_PROVIDER_VERSION="v1.29.0"
+      CRED_DIR=/var/lib/rancher/credentialprovider
+      mkdir -p "$CRED_DIR/bin"
+      if curl -fsSL -o "$CRED_DIR/bin/ecr-credential-provider" \
+           "https://artifacts.k8s.io/binaries/cloud-provider-aws/$${ECR_CRED_PROVIDER_VERSION}/linux/amd64/ecr-credential-provider-linux-amd64"; then
+        chmod 0755 "$CRED_DIR/bin/ecr-credential-provider"
+        cat > "$CRED_DIR/config.yaml" <<'EOF'
+      apiVersion: kubelet.config.k8s.io/v1
+      kind: CredentialProviderConfig
+      providers:
+        - name: ecr-credential-provider
+          matchImages:
+            - "*.dkr.ecr.*.amazonaws.com"
+          defaultCacheDuration: "12h"
+          apiVersion: credentialprovider.kubelet.k8s.io/v1
+      EOF
+      else
+        rm -f "$CRED_DIR/bin/ecr-credential-provider"
+        echo "[bootstrap] WARNING: ecr-credential-provider download failed — ECR image pulls will fail"
+      fi
+
+      # ---- Fetch instance metadata via IMDSv2 ---------------------------
+      TOKEN=$(curl -sS -X PUT "http://169.254.169.254/latest/api/token" \
+              -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+      IID=$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" \
+            http://169.254.169.254/latest/meta-data/instance-id)
+      PUBIP=$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" \
+              http://169.254.169.254/latest/meta-data/public-ipv4 || echo "")
+      PRIVIP=$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" \
+               http://169.254.169.254/latest/meta-data/local-ipv4)
+      AZ=$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" \
+            http://169.254.169.254/latest/meta-data/placement/availability-zone)
+      # Region is AZ minus the trailing letter (ap-south-1a → ap-south-1)
+      AZ_REGION="$${AZ%?}"
+
+      # Standard Kubernetes topology labels — K3s honours these when passed
+      # to the installer via --node-label.
+      TOPOLOGY_LABELS="--node-label topology.kubernetes.io/zone=$AZ --node-label topology.kubernetes.io/region=$AZ_REGION"
+
+      echo "[bootstrap] role=$ROLE env=$ENV_ instance=$IID pubip=$PUBIP az=$AZ region=$REGION"
+
+      if [ "$ROLE" = "server" ]; then
+        # ---- Install K3s server -----------------------------------------
+        #   --write-kubeconfig-mode 644 — devs can `cat` on the box for debug
+        #   --disable traefik          — we'll install our own ingress later
+        #   --disable servicelb        — no need; we use NodePort/ClusterIP
+        #   --disable metrics-server   — nothing here uses HPA / kubectl top
+        #   --disable local-storage    — no PersistentVolumeClaims anywhere
+        #   --tls-san <pubip>          — makes the server cert valid for the
+        #                                public IP (kubectl through SSM tunnel
+        #                                or direct)
+        #   --node-label ...           — set topology labels (see comment above)
+        # The env vars must prefix `sh` (the installer), not `curl`.
+        curl -sfL https://get.k3s.io | \
+          INSTALL_K3S_EXEC="server --write-kubeconfig-mode 644 --disable traefik --disable servicelb --disable metrics-server --disable local-storage --tls-san $PUBIP $TOPOLOGY_LABELS" \
+          sh -
+
+        # Wait for kubeconfig + node Ready
+        for i in $(seq 1 60); do
+          [ -f /etc/rancher/k3s/k3s.yaml ] && break
+          sleep 2
+        done
+        until k3s kubectl get nodes 2>/dev/null | grep -q " Ready "; do
+          echo "[bootstrap] waiting for node Ready..."
+          sleep 3
+        done
+
+        # Rewrite kubeconfig: replace 127.0.0.1 with the public IP so the file
+        # is usable from anywhere. Devs can also point it to localhost while
+        # SSM port-forward is running.
+        KCONF=$(sed -e "s|https://127\.0\.0\.1:6443|https://$PUBIP:6443|g" \
+                    /etc/rancher/k3s/k3s.yaml)
+
+        # Upload kubeconfig to SSM as SecureString.
+        aws ssm put-parameter \
+          --region "$REGION" \
+          --name  "$SSM_KCONF_PARAM" \
+          --type  SecureString \
+          --value "$KCONF" \
+          --overwrite \
+          --description "K3s kubeconfig — updated on every server boot" >/dev/null
+
+        # Upload the join token (so Module 2's agent can find it).
+        JOIN_TOKEN=$(cat /var/lib/rancher/k3s/server/node-token)
+        aws ssm put-parameter \
+          --region "$REGION" \
+          --name  "$SSM_JOIN_TOKEN" \
+          --type  SecureString \
+          --value "$JOIN_TOKEN" \
+          --overwrite \
+          --description "K3s agent join token" >/dev/null
+
+        # Upload the server URL (used by the agent's cloud-init). Private IP:
+        # the security group only admits node-to-node traffic from inside
+        # the SG, and hairpinning via the public IP arrives from outside it.
+        aws ssm put-parameter \
+          --region "$REGION" \
+          --name  "$SSM_SERVER_URL" \
+          --type  String \
+          --value "https://$${PRIVIP}:6443" \
+          --overwrite \
+          --description "K3s server URL for agent bootstrapping" >/dev/null
+
+        # Written LAST. Nothing deletes these params between servers, so this
+        # stamp is how readers tell the values above belong to THIS server.
+        aws ssm put-parameter \
+          --region "$REGION" \
+          --name  "$SSM_SERVER_ID" \
+          --type  String \
+          --value "$IID" \
+          --overwrite \
+          --description "Instance ID of the K3s server that wrote the kubeconfig/token/URL" >/dev/null
+
+        echo "[bootstrap] server ready. kubeconfig at SSM: $SSM_KCONF_PARAM"
+
+      elif [ "$ROLE" = "agent" ]; then
+        # Wait for the server Terraform just created to stamp its ID; until
+        # then the token + URL in SSM may be a previous server's.
+        EXPECTED_SERVER_ID="${server_instance_id}"
+        CURRENT_SERVER_ID=""
+        for i in $(seq 1 60); do
+          CURRENT_SERVER_ID=$(aws ssm get-parameter --region "$REGION" \
+                              --name "$SSM_SERVER_ID" \
+                              --query Parameter.Value --output text 2>/dev/null || echo "")
+          [ "$CURRENT_SERVER_ID" = "$EXPECTED_SERVER_ID" ] && break
+          echo "[bootstrap] waiting for $SSM_SERVER_ID = $EXPECTED_SERVER_ID (have: $${CURRENT_SERVER_ID:-none})..."
+          sleep 5
+        done
+        [ "$CURRENT_SERVER_ID" = "$EXPECTED_SERVER_ID" ] \
+          || { echo "[bootstrap] server $EXPECTED_SERVER_ID never finished bootstrapping — aborting"; exit 1; }
+
+        JOIN_TOKEN=$(aws ssm get-parameter --region "$REGION" \
+                     --name "$SSM_JOIN_TOKEN" \
+                     --with-decryption --query Parameter.Value --output text 2>/dev/null || echo "")
+        SERVER_URL=$(aws ssm get-parameter --region "$REGION" \
+                     --name "$SSM_SERVER_URL" \
+                     --query Parameter.Value --output text 2>/dev/null || echo "")
+
+        [ -n "$JOIN_TOKEN" ] || { echo "[bootstrap] no join token — aborting"; exit 1; }
+        [ -n "$SERVER_URL" ] || { echo "[bootstrap] no server URL — aborting"; exit 1; }
+
+        # Install K3s agent with topology labels. The env vars must prefix
+        # `sh` (the installer), not `curl`.
+        curl -sfL https://get.k3s.io | \
+          K3S_URL="$SERVER_URL" K3S_TOKEN="$JOIN_TOKEN" \
+          INSTALL_K3S_EXEC="agent $TOPOLOGY_LABELS" \
+          sh -
+
+        # The installer names the unit k3s-agent only when it really
+        # installed an agent; a standalone server gets k3s.service.
+        systemctl is-active --quiet k3s-agent \
+          || { echo "[bootstrap] k3s-agent service is not running — aborting"; exit 1; }
+        echo "[bootstrap] k3s-agent running, joining $SERVER_URL"
+      else
+        echo "[bootstrap] unknown role '$ROLE'" >&2
+        exit 2
+      fi
+
+      /usr/local/sbin/mem-report.sh || true
+
+runcmd:
+  - [/usr/local/sbin/bootstrap-k3s.sh]
+
+final_message: "K3s ${role} bootstrap complete after $UPTIME seconds"

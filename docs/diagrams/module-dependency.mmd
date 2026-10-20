@@ -1,0 +1,38 @@
+%% SmartOps-Lite — Module Dependency Graph (§9 in END-TO-END.md)
+%% All 13 shipped modules + their coupling.
+%% Render: npx -y @mermaid-js/mermaid-cli -i docs/diagrams/module-dependency.mmd -o docs/img/module-dependency.png -w 1400 -H 1400 --theme dark
+
+flowchart TB
+    M0[Module 0<br/>Setup + backend<br/>+ secrets]:::setup
+    M1[Module 1<br/>Terraform + VPC<br/>+ single-node K3s]:::infra
+    M2[Module 2<br/>Multi-node K3s<br/>+ agent in AZ-b]:::infra
+    M3[Module 3<br/>crashy-app<br/>+ Docker + Helm + ECR]:::infra
+    M31[Module 3.1<br/>Dev container<br/>+ local kind]:::optional
+    M4[Module 4<br/>Controller<br/>+ EventBridge]:::infra
+    M5[Module 5<br/>RCA Lambda<br/>+ DDB + Slack]:::infra
+    M6[Module 6<br/>Groq LLM<br/>+ Block Kit]:::infra
+    M7[Module 7<br/>Remediator<br/>+ HMAC + Function URL]:::infra
+    M8[Module 8<br/>CI/CD<br/>+ Dependabot + Trivy]:::infra
+    M9[Module 9<br/>MTTR aggregator<br/>+ Grafana JSON]:::infra
+    M10[Module 10<br/>Chaos runner<br/>+ demo script]:::infra
+    M11[Module 11<br/>README polish<br/>+ Loom script]:::polish
+    M12[Module 12<br/>Interview prep<br/>+ retro + release]:::polish
+
+    M0 --> M1
+    M1 --> M2
+    M2 --> M3
+    M3 --> M31
+    M3 --> M4
+    M4 --> M5
+    M5 --> M6
+    M6 --> M7
+    M7 --> M9
+    M9 --> M10
+    M10 --> M11
+    M11 --> M12
+    M5 -.->|"could ship anytime after M5"| M8
+
+    classDef setup    fill:#fef3c7,stroke:#d97706,color:#111;
+    classDef infra    fill:#e6f2ff,stroke:#2563eb,color:#111;
+    classDef optional fill:#f3e8ff,stroke:#7c3aed,color:#111,stroke-dasharray: 5 5;
+    classDef polish   fill:#ecfdf5,stroke:#059669,color:#111;

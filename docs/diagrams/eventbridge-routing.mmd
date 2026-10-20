@@ -1,0 +1,37 @@
+%% SmartOps-Lite — EventBridge Routing (§8 in END-TO-END.md)
+%% Sources → rules → targets. The incident rule is on the smartops-dev bus;
+%% the 5-minute schedule rule is on the default bus (schedules can't run on custom buses).
+%% Render: npx -y @mermaid-js/mermaid-cli -i docs/diagrams/eventbridge-routing.mmd -o docs/img/eventbridge-routing.png -w 1600 -H 900 --theme dark
+
+flowchart LR
+    subgraph Sources["Event sources"]
+        Ctrl[smartops-controller]:::pod
+        Rem[remediator Lambda]:::lambda
+        AWS[AWS internal<br/>scheduler]:::store
+    end
+
+    subgraph Bus["EventBridge — custom bus 'smartops-dev'"]
+        Rule1["Rule smartops-lite-incident-detected<br/>event pattern:<br/>{source: smartops.controller,<br/> detail-type: IncidentDetected}"]:::bus
+        NoRule["No rule for<br/>source: smartops.remediator<br/>(Module 7.1 deferred —<br/>event is accepted, then dropped)"]:::store
+    end
+
+    subgraph Default["EventBridge — default bus"]
+        Rule2["Rule smartops-lite-mttr-aggregate<br/>schedule expression:<br/>rate(5 minutes)"]:::bus
+    end
+
+    subgraph Targets["Rule targets"]
+        Rca[rca-generator Lambda]:::lambda
+        Agg[mttr-aggregator Lambda]:::lambda
+    end
+
+    Ctrl -->|"PutEvents<br/>{source: smartops.controller,<br/> detail-type: IncidentDetected,<br/> Detail: {schema 1.0}}"| Rule1
+    AWS -->|"internal tick<br/>{time: ISO8601}"| Rule2
+    Rem -.->|"PutEvents RemediationRequested<br/>(only after an Ack)"| NoRule
+
+    Rule1 --> Rca
+    Rule2 --> Agg
+
+    classDef pod    fill:#e6f2ff,stroke:#2563eb,color:#111;
+    classDef lambda fill:#fef3c7,stroke:#d97706,color:#111;
+    classDef bus    fill:#f3e8ff,stroke:#7c3aed,color:#111;
+    classDef store  fill:#ecfdf5,stroke:#059669,color:#111;

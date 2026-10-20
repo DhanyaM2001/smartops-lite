@@ -1,0 +1,69 @@
+%% SmartOps-Lite — Deployment Topology (§3 in END-TO-END.md)
+%% Where things physically run — VPC + AZs + serverless + managed.
+%% Render: npx -y @mermaid-js/mermaid-cli -i docs/diagrams/deployment-topology.mmd -o docs/img/deployment-topology.png -w 1800 -H 1000 --theme dark
+
+flowchart TB
+    subgraph AWS["AWS account · ap-south-1"]
+        direction TB
+
+        subgraph VPC["VPC 10.0.0.0/16"]
+            direction LR
+            subgraph AZa["Subnet ap-south-1a (10.0.1.0/24)"]
+                direction TB
+                EC2a["EC2 t3.micro<br/>K3s server<br/>+ crashy-app pod #1<br/>+ CoreDNS"]:::pod
+            end
+            subgraph AZb["Subnet ap-south-1b (10.0.2.0/24)"]
+                direction TB
+                EC2b["EC2 t3.micro<br/>K3s agent<br/>+ crashy-app pod #2<br/>+ controller pod (either node)"]:::pod
+            end
+            IGW["Internet Gateway"]:::store
+            AZa --- IGW
+            AZb --- IGW
+        end
+
+        subgraph Serverless["Serverless plane (regional, no VPC)"]
+            direction LR
+            Lam1["rca-generator<br/>Lambda"]:::lambda
+            Lam2["remediator<br/>Lambda"]:::lambda
+            Lam3["mttr-aggregator<br/>Lambda"]:::lambda
+            LamURL[["Function URL<br/>for remediator"]]:::fnurl
+            Lam2 --- LamURL
+        end
+
+        subgraph Managed["Managed data plane"]
+            direction LR
+            DDB[("DynamoDB<br/>smartops-incidents")]:::store
+            EB{{"EventBridge<br/>smartops-dev bus"}}:::bus
+            SSMS[["SSM Params<br/>2 secrets (+1 optional)<br/>+ 4 written by K3s"]]:::secret
+            CWS[("CloudWatch<br/>metrics + logs")]:::store
+            ECR[("ECR<br/>2 images")]:::store
+            S3[("S3<br/>tf-state")]:::store
+        end
+
+        EC2b -->|"PutEvents"| EB
+        EB --> Lam1
+        EB --> Lam3
+        Lam1 --> DDB
+        Lam1 --> SSMS
+        Lam2 --> DDB
+        Lam3 --> DDB
+        Lam3 --> CWS
+        EC2a -.-> ECR
+        EC2b -.-> ECR
+    end
+
+    Slack(["Slack (HTTPS)"]):::ext
+    Groq(["Groq (HTTPS)"]):::ext
+    Graf(["Grafana Cloud (HTTPS, optional)"]):::ext
+    Lam1 --> Groq
+    Lam1 --> Slack
+    Slack -.-> LamURL
+    Graf -.-> CWS
+
+    classDef pod    fill:#e6f2ff,stroke:#2563eb,color:#111;
+    classDef lambda fill:#fef3c7,stroke:#d97706,color:#111;
+    classDef bus    fill:#f3e8ff,stroke:#7c3aed,color:#111;
+    classDef store  fill:#ecfdf5,stroke:#059669,color:#111;
+    classDef secret fill:#fee2e2,stroke:#dc2626,color:#111;
+    classDef ext    fill:#f5f5f5,stroke:#525252,color:#111;
+    classDef fnurl  fill:#fef3c7,stroke:#d97706,color:#111,stroke-dasharray: 5 5;

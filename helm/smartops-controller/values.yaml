@@ -1,0 +1,115 @@
+# Default values for smartops-controller.
+# Override on install: `helm install ... --set image.repository=<...>` or `-f my-values.yaml`.
+
+# ---- Image ---------------------------------------------------------------
+image:
+  # Full pushable URL. `make helm-install-controller` sets this from
+  # `terraform output ecr_repository_urls["smartops/controller"]`.
+  repository: "REPLACE_ME"   # e.g. 1234567890.dkr.ecr.ap-south-1.amazonaws.com/smartops/controller
+  tag: "latest"
+  pullPolicy: Always
+
+imagePullSecrets: []
+
+# ---- Replicas ------------------------------------------------------------
+# Kept at 1: no leader election yet. Duplicate publishes are handled by
+# downstream idempotency + our LRU dedup, but running two watchers is still
+# ~2× the AWS API calls and adds no availability (the K8s API server IS the
+# state store — a controller restart resumes cleanly).
+replicaCount: 1
+
+# ---- Runtime env vars ---------------------------------------------------
+# The controller pulls its config from these + downward API.
+env:
+  AWS_REGION: "ap-south-1"
+  EVENT_BUS_NAME: "smartops-dev"
+  # DRY_RUN=true → log incidents to stdout, no AWS calls.
+  # Turned on by the local kind path (scripts/local-up.sh) via --set.
+  DRY_RUN: "false"
+  LOG_LEVEL: "INFO"
+  # Comma-separated namespaces to WATCH (empty = all).
+  WATCH_NAMESPACES: ""
+  # Comma-separated namespaces to SKIP.
+  EXCLUDE_NAMESPACES: "kube-system,kube-public,kube-node-lease,smartops"
+  DEDUP_CACHE_SIZE: "4096"
+  RECONNECT_BACKOFF_SECONDS: "3"
+  HEALTH_PORT: "8081"
+
+extraEnv: []
+#  - name: FOO
+#    value: bar
+
+# ---- Pod / container security -------------------------------------------
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  runAsGroup: 65534
+  fsGroup: 65534
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# ---- Resources -----------------------------------------------------------
+# Sized for t3.micro co-existence with crashy-app.
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+# ---- Probes --------------------------------------------------------------
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: health
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 2
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: health
+  initialDelaySeconds: 3
+  periodSeconds: 5
+  timeoutSeconds: 2
+  failureThreshold: 3
+
+# ---- Service (for /metrics scraping in Module 9) -------------------------
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8081
+
+# ---- ServiceAccount ------------------------------------------------------
+# On the node-IAM path (default in Module 4), no annotations are needed —
+# the pod inherits creds from the EC2 IMDS credential chain.
+# When we migrate to IRSA (Module 4.1), add:
+#   annotations:
+#     eks.amazonaws.com/role-arn: arn:aws:iam::<acct>:role/smartops-controller
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# ---- RBAC ---------------------------------------------------------------
+rbac:
+  create: true
+
+# ---- Node selection ------------------------------------------------------
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ---- Labels + annotations ------------------------------------------------
+podLabels: {}
+podAnnotations: {}

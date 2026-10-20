@@ -1,0 +1,116 @@
+# SmartOps-Lite — Security scans
+#
+# Runs on every push/PR AND on a weekly cron (so we catch fresh CVEs on
+# unchanged dependencies).
+#
+# Three complementary scanners — each targets a different attack surface:
+#   1. Trivy (filesystem)    — CVEs in Python + system deps + Dockerfile bases
+#   2. Trivy (config)        — misconfig in Terraform, Helm, Dockerfile
+#   3. Gitleaks              — accidentally committed secrets
+#
+# Every scanner uploads SARIF results to GitHub's Security tab so findings
+# appear as PR annotations. Failure policy is deliberately non-blocking
+# (continue-on-error) for CRITICAL/HIGH informational scans on unmerged
+# branches — flip to hard-fail when Module 8.1 lands the release pipeline.
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 4 * * 1"  # 4am UTC every Monday — weekly CVE catch-up
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write   # required to upload SARIF to Security tab
+  actions: read
+
+jobs:
+  # ---------------------------------------------------------- Trivy filesystem
+  trivy-fs:
+    name: Trivy — filesystem vulns
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan
+        # Non-blocking on unmerged branches (findings still show in the
+        # Security tab). Flip to `continue-on-error: false` once Module 8.1
+        # lands the release pipeline so CVEs gate the merge.
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs-results.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+          ignore-unfixed: true
+          exit-code: '0'
+          # Skip virtualenvs + build artifacts to keep scan fast.
+          skip-dirs: ".venv,.terraform,node_modules,dist,build,__pycache__"
+
+      - name: Upload SARIF to Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs-results.sarif
+          category: trivy-fs
+
+  # ------------------------------------------------------------- Trivy config
+  trivy-config:
+    name: Trivy — IaC misconfigs (TF + Helm + Dockerfile)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Trivy config scan
+        # Same non-blocking policy as trivy-fs; see comment above.
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: .
+          format: sarif
+          output: trivy-config-results.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: '0'
+          skip-dirs: ".venv,.terraform,node_modules,dist,build,__pycache__"
+
+      - name: Upload SARIF to Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-config-results.sarif
+          category: trivy-config
+
+  # ---------------------------------------------------------------- Gitleaks
+  gitleaks:
+    name: Gitleaks — committed-secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (full history for git-log scan)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          # Required by the action even on public repos. Uses the default
+          # runner token — no PAT needed.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No GITLEAKS_LICENSE needed for public repos or org-owned repos
+          # under the free tier.

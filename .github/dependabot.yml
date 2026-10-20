@@ -1,0 +1,97 @@
+# Dependabot config — weekly bumps across every language surface.
+#
+# One entry per ecosystem × directory (Dependabot's schema requires literal
+# directory paths). Grouped updates cut PR noise: minor + patch bumps ship
+# as one PR per package; major bumps still land solo so they're reviewed.
+#
+# Every schedule runs at 06:00 UTC on Mondays — well before the security
+# workflow's 04:00 UTC weekly Trivy scan on the same day, so if a bump
+# introduces a CVE it fails inside the same week's cycle.
+version: 2
+
+updates:
+  # ---- GitHub Actions -----------------------------------------------------
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    labels: [dependencies, github-actions]
+    open-pull-requests-limit: 5
+    groups:
+      github-actions-minor:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # ---- Terraform ---------------------------------------------------------
+  # env-root only — modules pin providers through the env-root.
+  - package-ecosystem: terraform
+    directory: "/infra/envs/dev"
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, terraform]
+    open-pull-requests-limit: 3
+
+  # ---- Docker (Dockerfile FROM lines) -----------------------------------
+  - package-ecosystem: docker
+    directory: "/apps/crashy-app"
+    schedule: {interval: weekly, day: monday}
+    labels: [dependencies, docker]
+
+  - package-ecosystem: docker
+    directory: "/controller"
+    schedule: {interval: weekly, day: monday}
+    labels: [dependencies, docker]
+
+  # ---- Python (pip / poetry across every package) -----------------------
+  - package-ecosystem: pip
+    directory: "/apps/crashy-app"
+    schedule: {interval: weekly, day: monday}
+    labels: [dependencies, python, crashy-app]
+    open-pull-requests-limit: 5
+    groups:
+      python-minor:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: "/controller"
+    schedule: {interval: weekly, day: monday}
+    labels: [dependencies, python, controller]
+    open-pull-requests-limit: 5
+    groups:
+      python-minor:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: "/lambdas/rca-generator"
+    schedule: {interval: weekly, day: monday}
+    labels: [dependencies, python, rca-generator]
+    open-pull-requests-limit: 5
+    groups:
+      python-minor:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: "/lambdas/remediator"
+    schedule: {interval: weekly, day: monday}
+    labels: [dependencies, python, remediator]
+    open-pull-requests-limit: 5
+    groups:
+      python-minor:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: "/lambdas/mttr-aggregator"
+    schedule: {interval: weekly, day: monday}
+    labels: [dependencies, python, mttr-aggregator]
+    open-pull-requests-limit: 5
+    groups:
+      python-minor:
+        patterns: ["*"]
+        update-types: [minor, patch]

@@ -1,0 +1,36 @@
+# yamllint config — used by `make lint` and CI.
+#
+# Helm templates contain `{{ .Values.foo }}` which is not valid YAML. We
+# explicitly ignore them. GitHub Actions workflows use some patterns
+# (multi-line run: |) that trip default line-length checks — we relax to
+# something sane.
+
+extends: default
+
+ignore: |
+  helm/*/templates/*.yaml
+  helm/*/templates/*.yml
+  helm/*/templates/*.tpl
+  .terraform/
+  node_modules/
+  .venv/
+  dist/
+  build/
+
+rules:
+  line-length:
+    max: 200
+    level: warning
+  truthy:
+    check-keys: false     # GitHub Actions uses `on:` as a top-level key
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+  document-start: disable
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
+  braces:
+    max-spaces-inside: 1
+  brackets:
+    max-spaces-inside: 1

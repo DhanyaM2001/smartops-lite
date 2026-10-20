@@ -1,0 +1,42 @@
+%% SmartOps-Lite — Lambda Cold-Start Secrets Flow (§4.4 in END-TO-END.md)
+%% Setup → cold start (SSM + KMS) → warm invocation reuse
+%% Render: npx -y @mermaid-js/mermaid-cli -i docs/diagrams/sequence-cold-start.mmd -o docs/img/sequence-cold-start.png -w 1600 -H 1200 --theme dark
+
+sequenceDiagram
+    autonumber
+    participant Op as Operator
+    participant Env as Local shell (env vars)
+    participant PS as scripts/put-secrets.sh
+    participant SSM as SSM Parameter Store
+    participant KMS as KMS (aws/ssm)
+    participant Lambda as RCA Lambda runtime
+    participant Handler as handler(event, context)
+
+    rect rgba(200,200,255,0.15)
+      Note over Op,KMS: Setup — one-time
+      Op->>Env: read -rsp → export SLACK_WEBHOOK_URL
+      Op->>Env: read -rsp → export GROQ_API_KEY
+      Op->>PS: make put-secrets
+      PS->>SSM: PutParameter(SecureString × 2)
+      Op->>Env: unset the variables
+      Note over Op,PS: optional: SLACK_SIGNING_SECRET + make put-signing-secret (Ack button only)
+      SSM->>KMS: Encrypt(value, key=aws/ssm)
+      KMS-->>SSM: ciphertext
+      SSM->>SSM: persist ciphertext
+    end
+
+    rect rgba(255,200,200,0.15)
+      Note over Lambda,Handler: Runtime — every cold start (~250-400ms)
+      Lambda->>Lambda: import module (module scope)
+      Lambda->>SSM: GetParameters(2 names, WithDecryption=true)
+      SSM->>KMS: Decrypt (via kms:ViaService condition)
+      KMS-->>SSM: plaintext × 2
+      SSM-->>Lambda: {slack_webhook, groq_api_key}
+      Lambda->>Lambda: Secrets(...) held at module scope
+    end
+
+    rect rgba(200,255,200,0.15)
+      Note over Lambda,Handler: Runtime — every warm invocation (~5ms)
+      Lambda->>Handler: handler(event, context)
+      Handler->>Handler: uses cached Secrets — no SSM/KMS call
+    end

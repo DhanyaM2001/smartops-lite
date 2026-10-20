@@ -1,0 +1,21 @@
+apiVersion: v2
+name: smartops-controller
+description: |
+  In-cluster K8s controller for SmartOps-Lite. Watches Pod events and
+  publishes structured incidents to an AWS EventBridge custom bus. Uses
+  the node's EC2 IAM role (via IMDS) for AWS creds — see
+  docs/modules/04-controller.md for why we chose node IAM over IRSA.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.28.0-0"
+home: https://github.com/dhanym/smartops-lite
+sources:
+  - https://github.com/dhanym/smartops-lite/tree/main/controller
+maintainers:
+  - name: Dhanya M
+keywords:
+  - smartops-lite
+  - controller
+  - eventbridge
+  - kubernetes
