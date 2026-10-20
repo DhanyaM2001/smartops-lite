@@ -107,7 +107,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           # Required by the action even on public repos. Uses the default
           # runner token — no PAT needed.
