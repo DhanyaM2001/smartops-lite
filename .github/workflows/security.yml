@@ -40,7 +40,7 @@ jobs:
     timeout-minutes: 8
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run Trivy filesystem scan
         # Non-blocking on unmerged branches (findings still show in the
@@ -73,7 +73,7 @@ jobs:
     timeout-minutes: 8
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run Trivy config scan
         # Same non-blocking policy as trivy-fs; see comment above.
@@ -102,7 +102,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout (full history for git-log scan)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
