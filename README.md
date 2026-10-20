@@ -256,7 +256,7 @@ Per-service allowances are in [`docs/06-cost-tracker.md`](docs/06-cost-tracker.m
 
 ![EC2 Instances](docs/img/ec2-instances.png)
 
-**The three Lambda function**
+**The three Lambda functions**
 
 ![Lambda functions](docs/img/lambda-functions.png)
 

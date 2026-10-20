@@ -155,7 +155,7 @@ jobs:
             fi
           done
 
-      - name: Run tests 
-        # Not `make test`: the Makefile exports AWS_PROFILE=smartops, which 
-        # only exists on the dev machine. The tests use fake credentials. 
-        run: bash scripts/test.sh 
+      - name: Run tests
+        # Not `make test`: the Makefile exports AWS_PROFILE=smartops, which
+        # only exists on the dev machine. The tests use fake credentials.
+        run: bash scripts/test.sh
