@@ -9,15 +9,15 @@ packages = [{ include = "crashy", from = "src" }]
 
 [tool.poetry.dependencies]
 python = "^3.12"
-fastapi = "^0.115.0"
-uvicorn = { extras = ["standard"], version = "^0.32.0" }
+fastapi = ">=0.115,<0.162"
+uvicorn = { extras = ["standard"], version = ">=0.32,<0.55" }
 pydantic = "^2.9.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
 pytest-asyncio = "^0.24.0"
-httpx = "^0.27.0"        # FastAPI TestClient dependency
-ruff = "^0.6.0"
+httpx = ">=0.27,<0.29"        # FastAPI TestClient dependency
+ruff = ">=0.6,<0.18"
 mypy = "^1.11.0"
 
 [tool.poetry.scripts]
